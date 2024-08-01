@@ -51,28 +51,34 @@ class DensityRatioEstimator(ABC):
         pass
 
 class KNNDensityRatioEstimator(DensityRatioEstimator):
-    def fit(self, x_numer: np.ndarray, x_denom: np.ndarray, k: int) -> None:
+    """
+    Initialize a KNNDensityRatioEstimator instance.
+
+    :param k: Integer specifying which nearest neighbors to use.
+    """
+    def __init__(self, k: int) -> None:
+        if not isinstance(k, int):
+            raise TypeError("k must be an integer")
+        if k <= 0:
+            raise ValueError("k must be positive")
+        self.k = k
+
+    def fit(self, x_numer: np.ndarray, x_denom: np.ndarray) -> None:
         """
-        Construct a density ratio estimator from the given data that is based on kth nearest neighbors.
+        Construct a density ratio estimator from the given data.
 
         :param x_numer: NumPy array of shape (n_numer, d) whose rows are samples from the numerator density.
         :param x_denom: NumPy array of shape (n_denom, d) whose rows are samples from the denominator density.
-        :param k: Integer specifying which nearest neighbors to use.
         """
         DensityRatioEstimator.check_array_type_shape(x_numer, "x_numer")
         DensityRatioEstimator.check_array_type_shape(x_denom, "x_denom")
         DensityRatioEstimator.check_array_col_counts(x_numer, x_denom)
-        if not isinstance(k, int):
-            raise TypeError("k must be an integer")
-        if k < 1:
-            raise ValueError("k must be positive")
-        if k > x_numer.shape[0] or k > x_denom.shape[0]:
-            raise ValueError("k must be less than or equal to both sample sizes")
+        if x_numer.shape[0] < self.k or x_denom.shape[0] < self.k:
+            raise ValueError("both sample sizes must be greater than or equal to k")
         self.x_numer = x_numer
         self.x_denom = x_denom
-        self.k = k
         self.d = x_numer.shape[1]
-        self.knns_finder = NearestNeighbors(n_neighbors=k)
+        self.knns_finder = NearestNeighbors(n_neighbors=self.k)
 
     def _get_dists_to_knn(self, x: np.ndarray, sample_type: str) -> np.ndarray:
         """

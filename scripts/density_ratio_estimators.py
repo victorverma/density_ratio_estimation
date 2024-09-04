@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from sklearn.neighbors import NearestNeighbors
 import numpy as np
+import warnings
 
 class DensityRatioEstimator(ABC):
     @staticmethod
@@ -51,21 +52,28 @@ class DensityRatioEstimator(ABC):
         pass
 
 class KNNDensityRatioEstimator(DensityRatioEstimator):
-    """
-    Initialize a KNNDensityRatioEstimator instance.
+    NUMER = "numer"
+    DENOM = "denom"
 
-    :param k: Integer specifying which nearest neighbors to use.
-    """
-    def __init__(self, k: int) -> None:
-        if not isinstance(k, int):
-            raise TypeError("k must be an integer")
-        if k <= 0:
-            raise ValueError("k must be positive")
-        self.k = k
+    def __init__(self, k_numer: int, k_denom: int) -> None:
+        """
+        Initialize a KNNDensityRatioEstimator instance.
+
+        :param k_numer: Integer specifying how many nearest neighbors to use from the array of numerator samples.
+        :param k_denom: Integer specifying how many nearest neighbors to use from the array of denominator samples.
+        """
+        for arg, val in {"k_numer": k_numer, "k_denom": k_denom}.items():
+            if not isinstance(val, int):
+                raise TypeError(f"{arg} must be an integer")
+            if val <= 0:
+                raise ValueError(f"{arg} must be positive")
+        self.k_numer = k_numer
+        self.k_denom = k_denom
+
 
     def fit(self, x_numer: np.ndarray, x_denom: np.ndarray) -> None:
         """
-        Construct a density ratio estimator from the given data.
+        Construct a density ratio estimator from the given arrays of numerator and denominator samples.
 
         :param x_numer: NumPy array of shape (n_numer, d) whose rows are samples from the numerator density.
         :param x_denom: NumPy array of shape (n_denom, d) whose rows are samples from the denominator density.
@@ -73,36 +81,46 @@ class KNNDensityRatioEstimator(DensityRatioEstimator):
         DensityRatioEstimator.check_array_type_shape(x_numer, "x_numer")
         DensityRatioEstimator.check_array_type_shape(x_denom, "x_denom")
         DensityRatioEstimator.check_array_col_counts(x_numer, x_denom)
-        if x_numer.shape[0] < self.k or x_denom.shape[0] < self.k:
-            raise ValueError("both sample sizes must be greater than or equal to k")
+        if x_numer.shape[0] < self.k_numer:
+            self.k_numer = x_numer.shape[0]
+            warnings.warn("number of numerator samples is less than number of numerator nearest neighbors")
+        if x_denom.shape[0] < self.k_denom:
+            self.k_denom = x_denom.shape[0]
+            warnings.warn("number of denominator samples is less than number of denominator nearest neighbors")
         self.x_numer = x_numer
         self.x_denom = x_denom
         self.d = x_numer.shape[1]
-        self.knns_finder = NearestNeighbors(n_neighbors=self.k)
+        self.numer_knns_finder = NearestNeighbors(n_neighbors=self.k_numer)
+        self.denom_knns_finder = NearestNeighbors(n_neighbors=self.k_denom)
 
-    def _get_dists_to_knn(self, x: np.ndarray, sample_type: str) -> np.ndarray:
+    def _get_dist_to_knn(self, x: np.ndarray, sample_type: str) -> np.ndarray:
         """
-        Compute the distance between each given point and its kth nearest neighbor in the specified sample.
+        Compute the distance between each point in a given array and its kth nearest neighbor in the specified sample.
 
         :param x: NumPy array of shape (n, d) whose rows are the points of interest.
-        :return: String specifying whether to use the numerator sample or the denominator sample.
+        :param sample_type: String ('numer' or 'denom') specifying whether to use the numerator or the denominator sample.
+        :return: NumPy array of shape (n,) containing the distance between each point and its kth nearest neighbor.
         """
-        if sample_type == "numer":
+        if sample_type == self.NUMER:
             sample = self.x_numer
-        elif sample_type == "denom":
+            knns_finder = self.numer_knns_finder
+            k = self.k_numer
+        elif sample_type == self.DENOM:
             sample = self.x_denom
+            knns_finder = self.denom_knns_finder
+            k = self.k_denom
         else:
-            raise ValueError("sample_type should be either 'numer' or 'denom'")
-        dists_to_knns, _ = self.knns_finder.fit(sample).kneighbors(x)
-        return dists_to_knns[:, self.k - 1]
+            raise ValueError(f"sample_type should be either '{self.NUMER}' or '{self.DENOM}'")
+        dists_to_knns, _ = knns_finder.fit(sample).kneighbors(x)
+        return dists_to_knns[:, k - 1]
 
     def predict(self, x: np.ndarray) -> np.ndarray:
         """
-        Estimate the value of a density ratio at specified points.
+        Estimate the values of a density ratio at points in a given array.
 
         :param x: NumPy array of shape (n, d) whose rows are the points at which the density ratio should be estimated.
         :return: NumPy array of shape (n,) containing the estimated values of the density ratio.
         """
-        dists_to_numer_knn = self._get_dists_to_knn(x, "numer")
-        dists_to_denom_knn = self._get_dists_to_knn(x, "denom")
+        dists_to_numer_knn = self._get_dist_to_knn(x, self.NUMER)
+        dists_to_denom_knn = self._get_dist_to_knn(x, self.DENOM)
         return (dists_to_denom_knn / dists_to_numer_knn) ** self.d

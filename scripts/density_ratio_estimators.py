@@ -1,5 +1,7 @@
 from abc import ABC, abstractmethod
 from sklearn.neighbors import NearestNeighbors
+from typing import Tuple
+import math
 import numpy as np
 import warnings
 
@@ -124,3 +126,53 @@ class KNNDensityRatioEstimator(DensityRatioEstimator):
         dists_to_numer_knn = self._get_dist_to_knn(x, self.NUMER)
         dists_to_denom_knn = self._get_dist_to_knn(x, self.DENOM)
         return (dists_to_denom_knn / dists_to_numer_knn) ** self.d
+
+class KNN2DensityRatioEstimator(DensityRatioEstimator):
+    def __init__(self, k: int) -> None:
+        """
+        Initialize a KNN2DensityRatioEstimator instance.
+
+        :param k: Integer specifying how many nearest neighbors to use from the arrays of numerator and denominator samples.
+        """
+        if not isinstance(k, int):
+            raise TypeError("k must be an integer")
+        if k <= 0:
+            raise ValueError("k must be positive")
+        self.k = k
+
+    def fit(self, x_numer: np.ndarray, x_denom: np.ndarray) -> None:
+        """
+        Construct a density ratio estimator from the given arrays of numerator and denominator samples.
+
+        :param x_numer: NumPy array of shape (n_numer, d) whose rows are samples from the numerator density.
+        :param x_denom: NumPy array of shape (n_denom, d) whose rows are samples from the denominator density.
+        """
+        DensityRatioEstimator.check_array_type_shape(x_numer, "x_numer")
+        DensityRatioEstimator.check_array_type_shape(x_denom, "x_denom")
+        DensityRatioEstimator.check_array_col_counts(x_numer, x_denom)
+        self.x_numer = x_numer
+        self.n_numer = x_numer.shape[0]
+        self.x_denom = x_denom
+        self.n_denom = x_denom.shape[0]
+        self.knns_finder = NearestNeighbors(n_neighbors=self.k)
+
+    def _get_dists_to_knns(self, x: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        x_combined = np.concatenate((self.x_numer, self.x_denom))
+        dists_to_knns, indices = self.knns_finder.fit(x_combined).kneighbors(x)
+        numer_flags = indices <= self.n_numer
+        return dists_to_knns, numer_flags
+
+    def predict(self, x: np.ndarray) -> np.ndarray:
+        """
+        Estimate the values of a density ratio at points in a given array.
+
+        :param x: NumPy array of shape (n, d) whose rows are the points at which the density ratio should be estimated.
+        :return: NumPy array of shape (n,) containing the estimated values of the density ratio.
+        """
+        dists_to_knns, numer_flags = self._get_dists_to_knns(x)
+        n = x.shape[0]
+        numer_vals = np.array([np.sum(np.exp(-dists_to_knns[i][numer_flags[i]])) for i in range(n)])
+        denom_vals = np.array([np.sum(np.exp(-dists_to_knns[i][~numer_flags[i]])) for i in range(n)])
+        k_numer = math.ceil(self.k * (self.n_numer / (self.n_numer + self.n_denom)))
+        k_denom = self.k - k_numer
+        return (numer_vals / k_numer) / (numer_vals / k_numer + denom_vals / k_denom) # Not normalized

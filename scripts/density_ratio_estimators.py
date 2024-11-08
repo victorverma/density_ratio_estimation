@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from densratio import densratio
 from sklearn.neighbors import NearestNeighbors
 from typing import Tuple
 import math
@@ -176,3 +177,21 @@ class KNN2DensityRatioEstimator(DensityRatioEstimator):
         k_numer = math.ceil(self.k * (self.n_numer / (self.n_numer + self.n_denom)))
         k_denom = self.k - k_numer
         return (numer_vals / k_numer) / (numer_vals / k_numer + denom_vals / k_denom) # Not normalized
+
+class RuLSIFDensityRatioEstimator(DensityRatioEstimator):
+    def __init__(self, sigma_range="auto", lambda_range="auto", kernel_num=100, verbose=True) -> None:
+        self.sigma_range = sigma_range
+        self.lambda_range = lambda_range
+        self.kernel_num = kernel_num
+        self.verbose = verbose
+
+    def fit(self, x_numer: np.ndarray, x_denom: np.ndarray) -> None:
+        self.estimator = densratio(
+            x_numer, x_denom,
+            sigma_range=self.sigma_range, lambda_range=self.lambda_range,
+            kernel_num=self.kernel_num,
+            verbose=self.verbose
+        )
+
+    def predict(self, x: np.ndarray) -> np.ndarray:
+        return self.estimator.compute_density_ratio(x)

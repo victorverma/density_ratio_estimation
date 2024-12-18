@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from densratio import densratio
 from sklearn.linear_model import LogisticRegression
 from sklearn.neighbors import NearestNeighbors
-from typing import Callable, Optional, Tuple
+from typing import Callable, Optional, Tuple, Union
 import math
 import numpy as np
 import warnings
@@ -209,8 +209,14 @@ class RuLSIFDensityRatioEstimator(DensityRatioEstimator):
         return self.estimator.compute_density_ratio(x)
 
 class LogRegDensityRatioEstimator(DensityRatioEstimator):
-    def __init__(self, penalty: Optional[str] = None, max_iter: int = 100, verbose: int = 0) -> None:
-        self.model_fitter = LogisticRegression(penalty=penalty, max_iter=max_iter, verbose=verbose)
+    def __init__(
+            self,
+            penalty: Optional[str] = None,
+            max_iter: Optional[int] = 100,
+            verbose: Optional[int] = 0,
+            class_weight: Optional[Union[dict, str]] = None
+        ) -> None:
+        self.model_fitter = LogisticRegression(penalty=penalty, max_iter=max_iter, verbose=verbose, class_weight=class_weight)
 
     def fit(self, x_numer: np.ndarray, x_denom: np.ndarray) -> None:
         self.n_numer = x_numer.shape[0]

@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from densratio import densratio
 from sklearn.linear_model import LogisticRegression
 from sklearn.neighbors import NearestNeighbors
-from typing import Optional, Tuple
+from typing import Callable, Optional, Tuple
 import math
 import numpy as np
 import warnings
@@ -59,7 +59,13 @@ class KNNDensityRatioEstimator(DensityRatioEstimator):
     NUMER = "numer"
     DENOM = "denom"
 
-    def __init__(self, k_numer: int, k_denom: int) -> None:
+    def __init__(
+            self,
+            k_numer: int,
+            k_denom: int,
+            dist_metric: Optional[Callable[[np.ndarray, np.ndarray, ...], float]] = None,
+            dist_metric_params: Optional[dict] = None
+        ) -> None:
         """
         Initialize a KNNDensityRatioEstimator instance.
 
@@ -73,7 +79,8 @@ class KNNDensityRatioEstimator(DensityRatioEstimator):
                 raise ValueError(f"{arg} must be positive")
         self.k_numer = k_numer
         self.k_denom = k_denom
-
+        self.dist_metric = dist_metric
+        self.dist_metric_params = dist_metric_params
 
     def fit(self, x_numer: np.ndarray, x_denom: np.ndarray) -> None:
         """
@@ -94,8 +101,12 @@ class KNNDensityRatioEstimator(DensityRatioEstimator):
         self.x_numer = x_numer
         self.x_denom = x_denom
         self.d = x_numer.shape[1]
-        self.numer_knns_finder = NearestNeighbors(n_neighbors=self.k_numer)
-        self.denom_knns_finder = NearestNeighbors(n_neighbors=self.k_denom)
+        if self.dist_metric is None:
+            self.numer_knns_finder = NearestNeighbors(n_neighbors=self.k_numer)
+            self.denom_knns_finder = NearestNeighbors(n_neighbors=self.k_denom)
+        else:
+            self.numer_knns_finder = NearestNeighbors(n_neighbors=self.k_numer, metric=self.dist_metric, metric_params=self.dist_metric_params)
+            self.denom_knns_finder = NearestNeighbors(n_neighbors=self.k_denom, metric=self.dist_metric, metric_params=self.dist_metric_params)
 
     def _get_dist_to_knn(self, x: np.ndarray, sample_type: str) -> np.ndarray:
         """
